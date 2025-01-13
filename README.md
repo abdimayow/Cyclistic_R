@@ -1,7 +1,7 @@
 <div style="text-align: center;">
-  <h1>Cyclistic User Behavior Analysis</h1>
-  <h2>Abdirahman Abdikadir Ali</h2>
-  <h4>13-01-2025</h4>
+  <h1>Title: Cyclistic User Behavior Analysis</h1>
+  <h2>Author: Abdirahman Abdikadir Ali</h2>
+  <h4>Date: 13-01-2025</h4>
 </div>
 
 # CONTEXT OF CASE STUDY
@@ -37,7 +37,8 @@ Three questions will guide the future marketing program:
 1. How do annual members and casual riders use Cyclistic bikes differently?
 2. Why would casual riders buy Cyclistic annual memberships?
 3. How can Cyclistic use digital media to influence casual riders to become members?
-   
+
+## Task   
 Moreno has assigned you the first question to answer: How do annual members and casualriders use Cyclistic bikes differently?
 You will produce a report with the following deliverables:
 1. A clear statement of the business task
