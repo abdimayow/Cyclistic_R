@@ -1,5 +1,6 @@
-This is a case study project for google data analytics professional certificate
-# CONTEXT
+## This is a case study project for google data analytics professional certificate
+
+# CONTEXT OF CASE STUDY
 
 ## About the company
 In 2016, Cyclistic launched a successful bike-share oŦering. Since then, the program has grown
