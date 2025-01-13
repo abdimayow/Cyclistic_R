@@ -1,13 +1,11 @@
 <div style="text-align: center;">
   <h1>Cyclistic User Behavior Analysis</h1>
   <h2>Abdirahman Abdikadir Ali</h2>
-  <p>13-01-2025</p>
+  <h4>13-01-2025</h4>
 </div>
 
-
-## This is a case study project for google data analytics professional certificate
-
 # CONTEXT OF CASE STUDY
+### This is a case study project for google data analytics professional certificate
 
 ## About the company
 <p>In 2016, Cyclistic launched a successful bike-share offering. Since then, the program has grown
