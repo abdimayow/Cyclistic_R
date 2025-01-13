@@ -1,3 +1,9 @@
+---
+title: "Cyclistic User Behavior Analysis"
+author: "Abdirahman Abdikadir Ali"
+date: "13-01-2025"
+---
+
 ## This is a case study project for google data analytics professional certificate
 
 # CONTEXT OF CASE STUDY
