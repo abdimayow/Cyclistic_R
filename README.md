@@ -49,6 +49,6 @@ You will produce a report with the following deliverables:
 6. Your top three recommendations based on your analysis
    
  
-*Click this link to see the analysis report: [Case Study Report](https://fy4z9s-mayow-cabdiqadir.shinyapps.io/case_study/)**
+**Click this link to see the analysis report: [Case Study Report](https://fy4z9s-mayow-cabdiqadir.shinyapps.io/case_study/)**
  
    
