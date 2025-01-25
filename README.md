@@ -48,23 +48,7 @@ You will produce a report with the following deliverables:
 5. Supporting visualizations and key findings
 6. Your top three recommendations based on your analysis
    
- Below is the analysis result
+ 
+*Click this link to see the analysis report: [Case Study Report](https://fy4z9s-mayow-cabdiqadir.shinyapps.io/case_study/)**
+ 
    
-## Analyzing usage trends
-
-### Popular Days of the week
-Members mostly use bikes on week days (Wednesday, Thursday and Tuesdays) while casual riders use bikes on weekends (Saturday, Sunday and Fridays) 
-### Popular Months of the Year
-Both members and casual riders mostly ride in the months of June, July, August and September. In   Chicago, the months of June, July, August, and September are generally associated with summer and early fall. These months in Chicago are vibrant, filled with outdoor activities.
-### Top Start Stations 
-From Februrary to December, Streeter Dr & Grand Ave station Is where majority of casual riders start their journey while in January, Ellis Ave & 60th St station is the start station for majority of casual riders.
-For member riders, In the months of Jan, Feb, Mar, Apr, May and Dec Clinton St & Washington Blvd is where member riders start their rides. For June, July, August and September, Kingsbury St & Kinzie St is the start station with majority of riders. In October, University Ave & 57th St is the start station with the majority of member riders.
-### Top End Stations 
-From Februrary to December, Streeter Dr & Grand Ave station Is where majority of casual riders end their journey while in January, University Ave & 57th St station is the end station for majority of casual riders.
-For member riders, In the months of Jan, Feb, Mar, Apr, May and Dec Clinton St & Washington Blvd is where member riders end their rides. For June, July, August, September and November, Kingsbury St & Kinzie St is the end station with majority of riders. In July, DuSable Lake Shore Dr & North Blvd has the end destination for majority of member riders. During October, University Ave & 57th St is the end station with the majority of member riders.
-### Peak Hours
-In the weekdays, peak hours for member riders are morning hours (5 am - 8 am) and evening hours (3 pm - 7 pm). In the weekends, peak hours are between 9 am to 6 pm.
-For casual rider, peak hours in the weekdays are between 4 pm to 7 pm. In the weekends, peak hours are between 9 am to 8 pm. It is important to note that there is a good number of casual riders who use bikes between 5 am to 8 am during the week days. This group of casual riders have similar pattern to member riders in terms of riding hours.  It is therefore worthwhile to have target advert to this of in order to convince them to join member subscription. This represents 2.5% of casual riders.
-
-
-
