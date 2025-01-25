@@ -1,0 +1,84 @@
+---
+title: "Tab Panels in R Markdown"
+output:
+  html_document:
+    code_folding: hide
+---
+
+# Tables and Graphs in Tabs
+
+## Using `tabset`
+
+### Tables
+
+#### {.tabset}
+
+##### Morning Data
+```{r}
+library(knitr)
+
+# Create a sample table
+morning_data <- data.frame(
+  Start_Station = c("Station A", "Station B"),
+  Total_Rides = c(120, 90)
+)
+
+# Render the table
+kable(morning_data, caption = "Morning Rides Table")
+```
+
+##### Evening Data
+```{r}
+# Create another sample table
+evening_data <- data.frame(
+  Start_Station = c("Station C", "Station D"),
+  Total_Rides = c(100, 80)
+)
+
+# Render the table
+kable(evening_data, caption = "Evening Rides Table")
+```
+
+##### Morning Graph
+```{r}
+library(ggplot2)
+
+# Sample graph for morning data
+ggplot(morning_data, aes(x = Start_Station, y = Total_Rides)) +
+  geom_col(fill = "blue") +
+  ggtitle("Morning Rides")
+
+```
+
+##### Evening Graph
+```{r}
+# Sample graph for evening data
+ggplot(evening_data, aes(x = Start_Station, y = Total_Rides)) +
+  geom_col(fill = "orange") +
+  ggtitle("Evening Rides")
+
+```
+
+
+---
+
+### Explanation of the Code:
+1. **`tabset`**: Adding `{.tabset}` after a header creates a group of tabs for the subsequent content. Each subheading (`###`) within that tabset becomes a separate tab.
+2. **Tables**: Tables are created and displayed under their respective tabs.
+3. **Graphs**: Graphs are rendered under their respective tabs using `ggplot2`.
+
+---
+
+### Rendered Output (HTML):
+- You’ll see two tabsets:
+  - **Tables**: Contains two tabs, "Morning Data" and "Evening Data," displaying the respective tables.
+  - **Graphs**: Contains two tabs, "Morning Graph" and "Evening Graph," displaying the respective graphs.
+
+---
+
+### Additional Notes:
+1. **Tabsets only work in HTML output.** If you want similar functionality in PDF, consider using LaTeX packages for advanced layout.
+2. If you want more advanced tabbed layouts or styling, you can use custom HTML and JavaScript or R packages like `shiny` or `bslib`.
+
+Let me know if you need further customization or help!
+

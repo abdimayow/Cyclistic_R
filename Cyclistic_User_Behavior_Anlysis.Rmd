@@ -1,0 +1,177 @@
+---
+title: "Cyclistic User Behavior Analysis (Monthly Data)"
+author: "Junior Data Analyst"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Load necessary libraries
+library(ggplot2)  # For data visualization
+library(dplyr)    # For data manipulation
+library(lubridate) # For date and time operations
+library(data.table)  # For efficient data manipulation
+library(leaflet)  # For mapping
+```
+
+## 2. Data Preparation
+### Load and Combine Monthly Data
+```{r}
+# List of monthly data file paths
+file_paths <- list(
+  "divvy-tripdata/202312-divvy-tripdata.csv",
+  "divvy-tripdata/202401-divvy-tripdata.csv",
+  "divvy-tripdata/202402-divvy-tripdata.csv",
+  "divvy-tripdata/202403-divvy-tripdata.csv",
+  "divvy-tripdata/202404-divvy-tripdata.csv",
+  "divvy-tripdata/202405-divvy-tripdata.csv",
+  "divvy-tripdata/202406-divvy-tripdata.csv",
+  "divvy-tripdata/202407-divvy-tripdata.csv",
+  "divvy-tripdata/202408-divvy-tripdata.csv",
+  "divvy-tripdata/202409-divvy-tripdata.csv",
+  "divvy-tripdata/202410-divvy-tripdata.csv",
+  "divvy-tripdata/202411-divvy-tripdata.csv"
+)
+
+# Load and combine data using data.table
+monthly_data <- rbindlist(lapply(file_paths, fread))
+```
+
+### 2.1 Check and Clean the Data
+#### Check for Missing Values
+```{r}
+# Check for missing values
+missing_summary <- colSums(is.na(monthly_data))
+print("Missing Values Summary:")
+print(missing_summary)
+```
+
+#### Remove Missing Values
+```{r}
+# Remove rows with missing values
+monthly_data <- monthly_data[complete.cases(monthly_data)]
+```
+
+#### Ensure Proper Date/Time Format
+```{r}
+# Convert date/time fields to proper format
+monthly_data[, started_at := as.POSIXct(started_at, format = "%Y-%m-%d %H:%M:%S")]
+monthly_data[, ended_at := as.POSIXct(ended_at, format = "%Y-%m-%d %H:%M:%S")]
+```
+
+#### Remove Duplicate Records
+```{r}
+# Remove duplicate rows
+monthly_data <- unique(monthly_data)
+```
+
+### 2.2 Add New Calculated Columns
+#### Trip Duration
+```{r}
+# Calculate trip duration in minutes
+monthly_data[, trip_duration := as.numeric(difftime(ended_at, started_at, units = "mins"))]
+```
+
+#### Day of Week
+```{r}
+# Extract the day of the week
+monthly_data[, day_of_week := weekdays(started_at)]
+```
+
+#### Hour of the Day
+```{r}
+# Extract the hour from the start time
+monthly_data[, hour_of_day := as.numeric(format(started_at, "%H"))]
+```
+
+## 3. Analyze the Data
+### 3.1 Aggregate Metrics by User Type
+#### Total Number of Rides by User Type
+```{r}
+# Total number of rides by user type
+total_rides <- table(monthly_data$member_casual)
+total_rides
+```
+
+#### Average Trip Duration by User Type
+```{r}
+# Average trip duration by user type
+avg_duration <- monthly_data[, .(avg_duration = mean(trip_duration, na.rm = TRUE)), by = member_casual]
+
+# Plot
+ggplot(avg_duration, aes(x = member_casual, y = avg_duration, fill = member_casual)) +
+  geom_bar(stat = "identity") +
+  geom_text(aes(label = round(avg_duration, 1)), vjust = -0.5) +
+  labs(title = "Average Trip Duration by User Type", x = "User Type", y = "Average Duration (minutes)") +
+  theme_minimal()
+```
+
+### 3.2 Analyze Usage Patterns
+#### Popular Days by User Type
+```{r}
+# Count rides by day of the week and user type
+popular_days <- monthly_data[, .N, by = .(member_casual, day_of_week)]
+popular_days$day_of_week <- factor(popular_days$day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+
+# Plot
+ggplot(popular_days, aes(day_of_week, N, fill = member_casual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Rides by Day of the Week and User Type", x = "Day of the Week", y = "Number of Rides", fill = "User Type") +
+  theme_minimal()
+```
+
+#### Peak Hours by User Type
+```{r}
+# Aggregate data for heatmap
+heatmap_data <- monthly_data[, .N, by = .(hour_of_day, member_casual)]
+
+# Plot
+ggplot(heatmap_data, aes(x = hour_of_day, y = member_casual, fill = N)) +
+  geom_tile() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Peak Hours by User Type", x = "Hour of Day", y = "User Type", fill = "Number of Rides") +
+  theme_minimal()
+```
+
+## 4. Visualize Insights
+### Geographic Maps: Popular Routes and Stations by User Type
+```{r}
+# Prepare data for mapping
+popular_routes <- monthly_data[, .(total_rides = .N), by = .(start_station_name, end_station_name, member_casual, start_lat, start_lng, end_lat, end_lng)]
+
+# Create map with layer control
+leaflet() %>%
+  addTiles() %>%
+  addCircleMarkers(
+    data = popular_routes[member_casual == "member"],
+    lng = ~start_lng, lat = ~start_lat,
+    radius = ~sqrt(total_rides),
+    color = "blue",
+    group = "Member"
+  ) %>%
+  addCircleMarkers(
+    data = popular_routes[member_casual == "casual"],
+    lng = ~start_lng, lat = ~start_lat,
+    radius = ~sqrt(total_rides),
+    color = "red",
+    group = "Casual"
+  ) %>%
+  addLayersControl(
+    overlayGroups = c("Member", "Casual"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  addLegend("bottomright", colors = c("blue", "red"), labels = c("Member", "Casual"), title = "User Type")
+```
+
+## 5. Summarize and Recommend
+### Key Findings
+- **Usage Trends**: Members take more rides overall but have shorter trip durations on average.
+- **Casual Riders**: Ride primarily on weekends and during leisure hours.
+- **Members**: Use bikes more consistently across the week, especially during commute hours.
+
+### Recommendations
+- Design weekend promotions targeting casual riders.
+- Highlight the benefits of annual memberships for regular commuting needs.
+- Increase marketing efforts at popular casual rider stations to convert them to members.

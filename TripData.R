@@ -1,6 +1,8 @@
 library(readr)
 # Load trip data for December 2023
 dec_23_tripdata <- read_csv("divvy-tripdata/202312-divvy-tripdata.csv")
+
+
 str(dec_23_tripdata)
 head(dec_23_tripdata)
 View(dec_23_tripdata)

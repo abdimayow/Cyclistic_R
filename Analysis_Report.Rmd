@@ -1,0 +1,1728 @@
+---
+title: "Cyclistic User Behavior Analysis 2024"
+author: "Abdirahman Abdikadir Ali"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_float: true
+    theme: cerulean
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  warning = FALSE # Suppress all warnings globally
+  )
+
+#Install necessary packages
+if (!requireNamespace("data.table", quietly = TRUE)) install.packages("data.table")
+if (!requireNamespace("mapdeck", quietly = TRUE)) install.packages("mapdeck")
+if (!requireNamespace("plotly", quietly = TRUE)) install.packages("plotly")
+if (!requireNamespace("arrow", quietly = TRUE)) install.packages("arrow")
+if (!requireNamespace("leaflet", quietly = TRUE)) install.packages("leaflet")
+if (!requireNamespace("kableExtra", quietly = TRUE)) install.packages("kableExtra")
+
+# Load necessary libraries
+library(data.table)  # Efficient data manipulation and date/time handling
+library(mapdeck)     # Scalable and high-performance mapping
+library(plotly)      # Interactive visualizations of large data sets
+library(arrow)       # Optimized storage and processing of large data sets
+library(leaflet)     # Interactive visualizations of small data sets
+library(kableExtra)  # Load kableExtra to style tables
+```
+
+## 1. Business Task
+<p>The business task is to analyze the differences in usage patterns between annual members and casual riders of Cyclistic’s bike-share program. This analysis will guide the design of marketing strategies aimed at converting casual riders into annual members, thereby maximizing the profitability of the Cyclistic program.</p>
+
+## 2. Understand the Dataset
+The analysis was conducted using Cyclistic’s historical bike trip data. The dataset includes the following attributes:
+
+- `ride_id`: Unique identifier for each ride.
+- `rideable_type`: Type of bike used.
+- `started_at` and `ended_at`: Start and end times of each trip.
+- `start_station_name` and `end_station_name`: Start and end stations of the trip.
+- `start_lat` and `start_lng`, `end_lat` and `end_lng`: Latitude and longitude of start and end points.
+- `member_casual`: Indicates whether the rider is a "member" or "casual".
+
+## 3. Data Preparation
+**Load and Combine Monthly Data from January 2024 to December 2024.**
+```{r Data Preparation}
+# List of monthly data file paths
+file_paths <- list(
+  "divvy-tripdata/202401-divvy-tripdata.csv",
+  "divvy-tripdata/202402-divvy-tripdata.csv",
+  "divvy-tripdata/202403-divvy-tripdata.csv",
+  "divvy-tripdata/202404-divvy-tripdata.csv",
+  "divvy-tripdata/202405-divvy-tripdata.csv",
+  "divvy-tripdata/202406-divvy-tripdata.csv",
+  "divvy-tripdata/202407-divvy-tripdata.csv",
+  "divvy-tripdata/202408-divvy-tripdata.csv",
+  "divvy-tripdata/202409-divvy-tripdata.csv",
+  "divvy-tripdata/202410-divvy-tripdata.csv",
+  "divvy-tripdata/202411-divvy-tripdata.csv",
+  "divvy-tripdata/202412-divvy-tripdata.csv"
+)
+
+# Load and combine data using data.table
+monthly_data <- rbindlist(lapply(file_paths, fread))
+```
+
+### 3.1 Data Cleaning
+The number of rows before cleaning the data: ``r nrow(monthly_data)``. To ensure accuracy and relevance, the following cleaning and transformation steps were performed.
+
+#### Check for Missing Values (N/A)
+```{r Check for Missing Values}
+# Check for missing values
+missing_summary <- colSums(is.na(monthly_data))
+missing_summary
+```
+<p>The data shows that end latitude and longitude of rows `7232` is missing. We can get the missing geo data from rows with complete data of these stations.</p>
+
+#### Check for blank values in key variables
+
+1. The number of rows missing data in start latitude column: ``r monthly_data[is.na(start_lat) | start_lat == "", .N]``.
+2. The number of rows missing in start longitude column: ``r monthly_data[is.na(start_lng) | start_lng == "", .N]``.
+3. The number of rows missing in start station name column: ``r monthly_data[is.na(start_station_name) | start_station_name == "", .N]``.
+4. The number of rows missing in start station id field: ``r monthly_data[is.na(start_station_id) | start_station_id == "", .N]``.
+5. The number of rows missing in end latitude column: ``r monthly_data[is.na(end_lat) | end_lat == "", .N]``.
+6. The number of rows missing in end longitude column: `r monthly_data[is.na(end_lng) | end_lng == "", .N]``.
+7. The number of rows missing in  station name column: ``r monthly_data[is.na(end_station_name) | end_station_name == "", .N]``.
+8. The number of rows missing in end station id column: ``r monthly_data[is.na(end_station_id) | end_station_id == "", .N]``.
+9. The number of rows missing start time: ``r monthly_data[is.na(started_at), .N]``.
+10. The number of rows missing end time: ``r monthly_data[is.na(ended_at), .N]``.
+11. The number of rows missing member type: ``r monthly_data[is.na(member_casual) | member_casual == "", .N]``.
+12. The number of rows missing bike type: ``r monthly_data[is.na(rideable_type) | rideable_type == "", .N]``.
+
+#### Negative longitudes
+The longitude of the Chicago area is negative because it is located in the Western Hemisphere. We shall check if there are positive values in longitudes column and change to negative.
+After checking the data, we found:  
+`r ifelse(any(monthly_data$start_lng > 0) & any(monthly_data$end_lng > 0), 
+          "There were positive longitudes, which have been corrected.", 
+          "There were No positive longitudes.")`
+```{r Negative longitudes}
+# Check if there are positive longitudes
+has_positive_longitudes <- any(monthly_data$start_lng > 0) & any(monthly_data$end_lng > 0)
+
+# Print the result
+if (has_positive_longitudes) {
+  monthly_data[, start_lng := -abs(start_lng)]
+  monthly_data[, end_lng := -abs(end_lng)]
+}
+```
+
+#### Get stations table
+<p>Missing data are station names and station geo data. To fill the data, we shall use rows that don't have missing station names and  station geo data.</p>
+
+1. Copy records that don't contain missing or blank values to *non_missing* table
+```{r non_missing_table}
+# Ensure monthly_data is a data.table
+setDT(monthly_data)
+# Remove duplicates
+monthly_data <- unique(monthly_data, by = "ride_id")
+# Filter rows where the specified columns are not missing or blank
+non_missing <- monthly_data[
+  !is.na(start_station_name) & start_station_name != "" &
+  !is.na(start_station_id) & start_station_id != "" &
+  !is.na(end_station_name) & end_station_name != "" &
+  !is.na(end_station_id) & end_station_id != "" &
+  !is.na(end_lat) & end_lat != "" &
+  !is.na(end_lng) & end_lng != ""
+]
+```
+The number of rows that have non-missing data: ``r nrow(non_missing)``.
+
+2. Get each station with its geo data.
+```{r Get station coordinates}
+# Group by `start_station_id` and `start_station_name`, and calculate the average latitude and longitude
+start_station_coords <- non_missing[, .(
+  station_lat = mean(start_lat),  # Calculate average latitude
+  station_lng = mean(start_lng)   # Calculate average longitude
+), by = .(start_station_id, start_station_name)]
+
+# Group by `end_station_name` and calculate the average latitude and longitude
+end_station_coords <- non_missing[, .(
+  station_lat = mean(end_lat),  # Calculate average latitude
+  station_lng = mean(end_lng)   # Calculate average longitude
+), by = .(end_station_id, end_station_name)]
+
+# Rename columns for merging
+setnames(start_station_coords, "start_station_name", "station_name")
+setnames(end_station_coords, "end_station_name", "station_name")
+
+setnames(start_station_coords, "start_station_id", "station_id")
+setnames(end_station_coords, "end_station_id", "station_id")
+
+start_station_coords <- unique(start_station_coords)
+end_station_coords <- unique(end_station_coords)
+```
+
+3. Combine unique coordinates from both start and end stations.
+```{r combine station coordinates}
+# Combine unique coordinates from both start and end stations
+all_station_coords <- rbind(start_station_coords, end_station_coords)
+```
+
+4. To handle multiple latitude and longitude values for the same station, we compute the average latitude and longitude for each station type.
+```{r stations table}
+# Aggregate latitude and longitude by station_name
+stations <- all_station_coords[, .(
+  station_lat = mean(station_lat, na.rm = TRUE),    # Calculate average latitude
+  station_lng = mean(station_lng, na.rm = TRUE)     # Calculate average longitude
+), by = .(station_id,station_name)]
+
+# Ensure `stations` has unique rows by `station_id`
+stations <- unique(stations, by = "station_id")
+```
+The number of stations are: ``r nrow(stations)``.
+
+5. Find station that are only present in monthly data and not in stations table.
+```{r stations in monthly data table}
+library(data.table)
+
+# Ensure data.tables
+setDT(monthly_data)
+setDT(stations)
+
+
+# Find `start_station_id`s in `monthly_data` not in `stations`
+missing_start_station_ids <- unique(monthly_data[!start_station_id %in% stations$station_id & !is.na(start_station_id) & start_station_id != "", start_station_id])
+
+# Find `end_station_id`s in `monthly_data` not in `stations`
+missing_end_station_ids <- unique(monthly_data[!end_station_id %in% stations$station_id & !is.na(end_station_id) & end_station_id != "", end_station_id])
+
+# Combine the results for both start and end stations
+missing_station_ids <- unique(c(missing_start_station_ids, missing_end_station_ids))
+```
+Number of stations missing in station table are: ``r length(missing_station_ids)``.
+
+6. Add missing stations to station table.
+```{r missing stations}
+library(data.table)
+
+# Ensure data.tables
+setDT(monthly_data)
+setDT(stations)
+
+# Rename the `stations` columns for clarity
+# setnames(stations, c("id", "name", "lat", "lng"),
+#          c("station_id", "station_name", "station_lat", "station_lng"))
+
+# Identify missing start_station_id
+missing_start_stations <- monthly_data[
+  !start_station_id %in% stations$station_id & !is.na(start_station_id) & start_station_id != "",
+  .(station_id = start_station_id, 
+    station_name = start_station_name, 
+    station_lat = start_lat, 
+    station_lng = start_lng)
+]
+
+# Identify missing end_station_id
+missing_end_stations <- monthly_data[
+  !end_station_id %in% stations$station_id & !is.na(end_station_id) & end_station_id != "",
+  .(station_id = end_station_id, 
+    station_name = end_station_name, 
+    station_lat = end_lat, 
+    station_lng = end_lng)
+]
+
+# Combine the missing stations
+missing_stations <- unique(rbind(missing_start_stations, missing_end_stations))
+
+# Add the missing stations to the `stations` table
+stations <- rbind(stations, missing_stations, use.names = TRUE, fill = TRUE)
+
+stations <- unique(stations, by = "station_id")
+```
+The new number of stations are: ``r nrow(stations)``.
+
+7. Confirm if there still stations that are only present in monthly data and not in stations table.
+```{r add missing stations}
+library(data.table)
+
+# Ensure data.tables
+setDT(monthly_data)
+setDT(stations)
+
+
+# Find `start_station_id`s in `monthly_data` not in `stations`
+missing_start_station_ids <- unique(monthly_data[!start_station_id %in% stations$station_id & !is.na(start_station_id) & start_station_id != "", start_station_id])
+
+# Find `end_station_id`s in `monthly_data` not in `stations`
+missing_end_station_ids <- unique(monthly_data[!end_station_id %in% stations$station_id & !is.na(end_station_id) & end_station_id != "", end_station_id])
+
+# Combine the results for both start and end stations
+missing_station_ids <- unique(c(missing_start_station_ids, missing_end_station_ids))
+
+```
+Number of stations still missing are: ``r length(missing_station_ids)``.
+
+#### Matching stations
+<p>We perform a "rough match" to match latitude and longitude data between the monthly_data table and the stations table. Since the latitude and longitude data in monthly_data is varied and the stations table contains averaged coordinates, we use a tolerance range for matching. We shall use Tolerance range from 0.0001 to 0.01</p>
+
+**Justification for using Tolerance (0.0001 to 0.01)**
+<p>Using a tolerance range from `0.0001 to 0.01` ensures flexibility in matching latitude and longitude data between the data sets. This range progressively balances precision and completeness. A tolerance of `0.003 (~333 meters)` effectively captures most valid matches in a densely populated urban area like Chicago without over-matching, accommodating minor variations in GPS data. Expanding the tolerance incrementally up to `0.01 (~1.1 km)` accounts for wider spatial variations, ensuring accuracy for stations spaced farther apart while maintaining reliable data alignment.</p>
+
+##### {.tabset}
+
+###### First Matching Pass (0.0001)
+```{r tolerance of 0.0001}
+# Define tolerance for latitude and longitude
+tolerance <- 0.0001
+
+# Rough match function with a tolerance of 0.0001
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.0001}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Second Matching Pass (0.0002)
+```{r tolerance of 0.0002}
+# Define tolerance for latitude and longitude
+tolerance <- 0.0002
+
+# Rough match function with a tolerance of 0.0002
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.0002}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Third Matching Pass (0.0003)
+```{r tolerance of 0.0003}
+# Define tolerance for latitude and longitude
+tolerance <- 0.0003
+
+# Rough match function with a tolerance of 0.0003
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.0003}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Fourth Matching Pass (0.0005)
+```{r tolerance of 0.0005}
+# Define tolerance for latitude and longitude
+tolerance <- 0.0005
+
+# Rough match function with a tolerance of 0.0005
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.0005}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Fifth Matching Pass (0.001)
+```{r tolerance of 0.001}
+# Define tolerance for latitude and longitude
+tolerance <- 0.001
+
+# Rough match function with a tolerance of 0.001
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.001}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Sixth Matching Pass (0.002)
+```{r tolerance of 0.002}
+# Define tolerance for latitude and longitude
+tolerance <- 0.002
+
+# Rough match function with a tolerance of 0.002
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.002}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Seventh Matching Pass (0.003)
+```{r tolerance of 0.003}
+# Define tolerance for latitude and longitude
+tolerance <- 0.003
+
+# Rough match function with a tolerance of 0.003
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.003}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+###### Eighth Matching Pass (0.005)
+```{r tolerance of 0.005}
+# Define tolerance for latitude and longitude
+tolerance <- 0.005
+
+# Rough match function with a tolerance of 0.005
+match_lat_lng <- function(lat, lng, stations) {
+  matched_station <- stations[
+    abs(station_lat - lat) <= tolerance & abs(station_lng - lng) <= tolerance
+  ]
+  
+  if (nrow(matched_station) == 1) {
+    return(matched_station[1]) # Return the matched row if there's exactly one match
+  } else if (nrow(matched_station) > 1) {
+    # If multiple matches, return the nearest one
+    matched_station[, dist := sqrt((station_lat - lat)^2 + (station_lng - lng)^2)]
+    return(matched_station[which.min(dist)])
+  } else {
+    # No match found
+    return(data.table(station_id = NA, station_name = NA, station_lat = NA, station_lng = NA))
+  }
+}
+
+# Match logic with fallback to original values
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == ""),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Match logic with fallback to original values for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == ""),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.005}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+
+**Examine remaining data that have missing stations**
+
+After quick observation, data with missing stations fall under 2 categories:
+
+1. Rows whose latitude and longitude are of 2 decimal places. 
+2. Rows whose latitudes and longitudes are missing.
+
+**Solution:** Since the precision is low, we increase the tolerance for these specific rows to *0.01* accommodate the lack of decimal detail.
+
+**Identify Rows with 2 Decimal Place latitude and longitude**
+```{r rows with 2 decimal places}
+two_decimal_start <- monthly_data[
+  !is.na(start_lat) & !is.na(start_lng) & 
+   (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) |start_station_name == "") &
+  (round(start_lat, 2) == start_lat & round(start_lng, 2) == start_lng)
+]
+two_decimal_end <- monthly_data[
+  !is.na(end_lat) & !is.na(end_lng) & 
+   (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) |end_station_name == "") &
+  (round(end_lat, 2) == end_lat & round(end_lng, 2) == end_lng)
+]
+```
+- For data with missing start stations,``r nrow(two_decimal_start)``  rows out of ``r sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")`` rows have (lat and long) with 2 decimal places.
+- For data with missing end stations,``r nrow(two_decimal_end)``  rows out of ``r sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")`` rows have (lat and long) with 2 decimal places.
+
+###### Last Matching Pass (0.01)
+```{r tolerance of 0.01}
+# Define tolerance for rows with 2 decimals
+tolerance <- 0.01
+
+# Identify rows with lat/lng rounded to 2 decimals
+monthly_data[
+  (is.na(start_station_id) | start_station_id == "") & 
+  (is.na(start_station_name) | start_station_name == "") & 
+  (round(start_lat, 2) == start_lat & round(start_lng, 2) == start_lng),
+  c("start_station_id", "start_station_name", "start_lat", "start_lng") := {
+    match <- match_lat_lng(start_lat, start_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), start_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), start_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), start_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), start_lng, match$station_lng)
+    )
+  },
+  by = .(start_lat, start_lng)
+]
+
+# Repeat the process for end stations
+monthly_data[
+  (is.na(end_station_id) | end_station_id == "") & 
+  (is.na(end_station_name) | end_station_name == "") & 
+  (round(end_lat, 2) == end_lat & round(end_lng, 2) == end_lng),
+  c("end_station_id", "end_station_name", "end_lat", "end_lng") := {
+    match <- match_lat_lng(end_lat, end_lng, stations)
+    list(
+      station_id = ifelse(is.na(match$station_id), end_station_id, match$station_id),
+      station_name = ifelse(is.na(match$station_name), end_station_name, match$station_name),
+      station_lat = ifelse(is.na(match$station_lat), end_lat, match$station_lat),
+      station_lng = ifelse(is.na(match$station_lng), end_lng, match$station_lng)
+    )
+  },
+  by = .(end_lat, end_lng)
+]
+```
+
+The percentage of stations resolved using tolerance of ``r format(tolerance, scientific = FALSE)``.
+```{r rows resolved; 0.01}
+total_rows <- nrow(monthly_data)
+matched_start <- total_rows - sum(is.na(monthly_data$start_station_id) | monthly_data$start_station_id == "")
+matched_end <- total_rows - sum(is.na(monthly_data$end_station_id) | monthly_data$end_station_id == "")
+```
+- The Percentage of resolved start stations: ``r (matched_start / total_rows) * 100``.
+- The Percentage of resolved end stations: ``r (matched_end / total_rows) * 100``.
+
+
+#### Comparing complete and incomplete data
+```{r unmatched rows}
+unmatched_start <- monthly_data[
+  (is.na(start_station_id) | start_station_id == "")
+]
+
+unmatched_end <- monthly_data[
+  (is.na(end_station_id) | end_station_id == "")
+]
+
+unmatched_stations <- monthly_data[
+  is.na(start_station_id) | start_station_id == "" | is.na(end_station_id) | end_station_id == ""
+]
+unmatched_rows <- nrow(unmatched_stations)
+
+
+matched_stations <- monthly_data[
+  !is.na(start_station_id) & start_station_id != "" & !is.na(end_station_id) & end_station_id != ""
+]
+matched_rows <- nrow(matched_stations)
+
+```
+- There are ``r unmatched_rows`` rows with incomplete data. This is ``r (unmatched_rows / total_rows) * 100`%` of the total data.
+- There are ``r matched_rows`` rows with complete data. This is ``r (matched_rows / total_rows) * 100`% `of the total data.
+
+#### Removing rows with incomplete data
+Since rows with incomplete data are less than `1%`, removing them will not have that much effect on the results of the data analysis.
+```{r remove dirty rows}
+monthly_data <- matched_stations
+```
+
+#### Latitude and Longitude 
+To standardize the latitude and longitude of stations in the monthly_data table based on the stations table, we overwrite the latitude and longitude values in monthly_data with those from the stations table. This ensures that each station in monthly_data has a single, consistent set of coordinates.
+```{r Latitude and Longitude}
+library(data.table)
+
+# Ensure data.tables
+setDT(monthly_data)
+setDT(stations)
+
+# Ensure `monthly data` has unique rows by `ride_id`
+monthly_data <- unique(monthly_data, by = "ride_id")
+
+# Standardize start station latitude and longitude
+monthly_data <- merge(
+  monthly_data,
+  stations[, .(station_id, station_lat, station_lng)],
+  by.x = "start_station_id",
+  by.y = "station_id",
+  all.x = TRUE
+)
+
+# Replace start_lat and start_lng with consistent values from stations
+monthly_data[, start_lat := station_lat]
+monthly_data[, start_lng := station_lng]
+
+# Drop the merged station columns
+monthly_data[, c("station_lat", "station_lng") := NULL]
+
+# Standardize end station latitude and longitude
+monthly_data <- merge(
+  monthly_data,
+  stations[, .(station_id, station_lat, station_lng)],
+  by.x = "end_station_id",
+  by.y = "station_id",
+  all.x = TRUE
+)
+
+# Replace end_lat and end_lng with consistent values from stations
+monthly_data[, end_lat := station_lat]
+monthly_data[, end_lng := station_lng]
+
+# Drop the merged station columns
+monthly_data[, c("station_lat", "station_lng") := NULL]
+
+```
+
+**The result of cleaning monthly data table:**
+
+1. The number of rows missing in start latitude column: ``r monthly_data[is.na(start_lat) | start_lat == "", .N]``.
+2. The number of rows missing in start longitude column: ``r monthly_data[is.na(start_lng) | start_lng == "", .N]``.
+3. The number of rows missing in start station name column: ``r monthly_data[is.na(start_station_name) | start_station_name == "", .N]``.
+4. The number of rows missing in start station id field: ``r monthly_data[is.na(start_station_id) | start_station_id == "", .N]``.
+5. The number of rows missing in end latitude column: ``r monthly_data[is.na(end_lat) | end_lat == "", .N]``.
+6. The number of rows missing in end longitude column: ``r monthly_data[is.na(end_lng) | end_lng == "", .N]``.
+7. The number of rows missing in  station name column: ``r monthly_data[is.na(end_station_name) | end_station_name == "", .N]``.
+8. The number of rows missing in end station id column: ``r monthly_data[is.na(end_station_id) | end_station_id == "", .N]``.
+
+#### Proper Date and Time Formatting
+Converted started_at and ended_at columns to POSIXct for accurate time calculations.
+```{r Proper Date and Time Formatting}
+# Convert date/time fields to proper format
+monthly_data[, started_at := as.POSIXct(started_at, format = "%Y-%m-%d %H:%M:%S")]
+monthly_data[, ended_at := as.POSIXct(ended_at, format = "%Y-%m-%d %H:%M:%S")]
+```
+
+#### Remove Duplicate Records
+Duplicate rows were removed to avoid skewed results.
+```{r Remove Duplicate Records}
+# Ensure `monthly data` has unique rows by `ride_id`
+monthly_data <- unique(monthly_data, by = "ride_id")
+```
+
+### 3.2 Data Manipulation
+
+#### Trip Duration
+Calculated as the difference between `ended_at` and `started_at`.
+```{r  Calculated Trip Duration}
+# Calculate trip duration in minutes
+monthly_data[, trip_duration := as.numeric(difftime(ended_at, started_at, units = "mins"))]
+```
+
+#### Day of Week
+Extracted the weekday from `started_at`.
+```{r Trip Duration}
+# Extract the day of the week
+monthly_data[, day_of_week := weekdays(started_at)]
+```
+
+#### Hour of the Day
+Extracted the hour from `started_at`.
+```{r Hour of the Day}
+# Extract the hour from the start time
+monthly_data[, hour_of_day := as.numeric(format(started_at, "%H"))]
+```
+
+## 4. Analyze the Data
+Analyzed total rides, popular days, months, start stations, and end stations for both user types.
+
+### 4.1 Aggregate Metrics
+
+#### Total Number of Rides by User Type
+
+##### {.tabset}
+
+###### Table of Rides
+```{r Table of Percentage Rides}
+# Total number of rides by user type
+total_rides <- monthly_data[, .N, by = member_casual]
+setnames(total_rides, "N", "TotalRides") # Rename column for clarity
+
+# Calculate percentage
+total_rides[, Percentage := round((TotalRides / sum(TotalRides)) * 100, 1)]
+
+# Styled table with kableExtra
+total_rides %>%
+  knitr::kable(
+    col.names = c("User Type", "Total Rides", "Percentage (%)"),
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  )
+```
+
+###### Bar Graph
+```{r Graph of Percentage Rides}
+plot_ly(
+  data = total_rides,
+  x = ~member_casual,
+  y = ~Percentage,
+  type = "bar",
+  text = ~paste(Percentage, "%"),
+  textposition = "outside",
+  marker = list(color = c("#1f77b4", "#ff7f0e"))
+) %>%
+  layout(
+    title = "Percentage of Rides by User Type",
+    xaxis = list(title = "User Type"),
+    yaxis = list(title = "Percentage (%)"),
+    showlegend = FALSE
+  )
+```
+
+
+#### Average Trip Duration by User Type
+Members take more rides overall but have shorter trip durations on average.
+
+##### {.tabset}
+
+###### Member Table
+```{r Table of Trip Duration}
+# Average trip duration by user type
+avg_duration <- monthly_data[, .(avg_duration = mean(trip_duration, na.rm = TRUE)), by = member_casual]
+
+# Average trip duration table
+avg_duration %>%
+  knitr::kable(
+    col.names = c("User Type", "Average Duration (minutes)"),
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE
+  )
+```
+
+###### Bar Graph
+```{r Graph of Trip Duration}
+# Interactive Plot
+plot_ly(avg_duration, x = ~member_casual, y = ~avg_duration, type = 'bar', color = ~member_casual) %>%
+  layout(title = "Average Trip Duration by User Type",
+         xaxis = list(title = "User Type"),
+         yaxis = list(title = "Average Duration (minutes)"))
+```
+
+
+### 4.2 Analyze Usage Patterns
+#### Popular Days by User Type
+<p>Members prefer *weekdays*, especially Wednesday, Tuesday, and Thursday while Casual Riders favor *weekends*, primarily Saturday, Sunday, and Friday.</p>
+
+##### {.tabset}
+
+###### Member Table
+```{r Popular Days of Week for Members}
+# Count rides by day of the week and user type
+popular_days <- monthly_data[, .N, by = .(member_casual, day_of_week)]
+popular_days$day_of_week <- factor(popular_days$day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))
+setnames(popular_days, "N", "TotalRides")
+
+
+# Separate tables for each user type
+popular_days_member <- popular_days[member_casual == "member"][order(-TotalRides)]
+popular_days_casual <- popular_days[member_casual == "casual"][order(-TotalRides)]
+
+# Member Table
+member_table <- popular_days_member %>%
+  knitr::kable(
+    col.names = c("User Type", "Day of Week", "Total Rides"),
+    caption = "Popular Days of the Week for Members",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "steelblue") %>% # Style User Type column
+  column_spec(2, width = "20em") %>% # Adjust column width for Day of Week
+  column_spec(3, color = "black", background = "lightgray") # Style Total Rides column
+# Print tables
+member_table
+```
+
+###### Casual Table
+```{r Popular Days of the Week for Casual Riders}
+# Casual Table
+casual_table <- popular_days_casual %>%
+  knitr::kable(
+    col.names = c("User Type", "Day of Week", "Total Rides"),
+    caption = "Popular Days of the Week for Casual Riders",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style User Type column
+  column_spec(2, width = "20em") %>% # Adjust column width for Day of Week
+  column_spec(3, color = "black", background = "lightgray") # Style Total Rides column
+casual_table
+```
+
+###### Bar Graph
+```{r Bar Graph of Rides by Day}
+# Interactive Plot
+plot_ly(popular_days, x = ~day_of_week, y = ~TotalRides, color = ~member_casual, type = 'bar') %>%
+  layout(title = "Rides by Day of the Week and User Type",
+         xaxis = list(title = "Day of the Week"),
+         yaxis = list(title = "Number of Rides"))
+```
+
+
+#### Popular Months by User Type
+<p>Both members and casual make most rides in the months of June, July, August and September. In   Chicago, the months of June, July, August, and September are generally associated with *summer and early fall*. These months in Chicago are vibrant, filled with outdoor activities.</p>
+
+
+##### {.tabset}
+
+###### Member Table
+```{r Popular Months for Members}
+# Extract month from started_at
+monthly_data[, month := format(started_at, "%B")]
+
+# Count rides by month and user type
+popular_months <- monthly_data[, .N, by = .(member_casual, month)]
+popular_months$month <- factor(popular_months$month, levels = month.name)
+setnames(popular_months, "N", "TotalRides")
+
+# Separate tables for each user type and sort by Total Rides
+popular_months_member <- popular_months[member_casual == "member"][order(-TotalRides)]
+popular_months_casual <- popular_months[member_casual == "casual"][order(-TotalRides)]
+
+# Member Table
+member_month_table <- popular_months_member %>%
+  knitr::kable(
+    col.names = c("User Type", "Month", "Total Rides"),
+    caption = "Popular Months for Members",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "steelblue") %>% # Style User Type column
+  column_spec(2, width = "20em") %>% # Adjust column width for Month
+  column_spec(3, color = "black", background = "lightgray") # Style Total Rides column
+# Print tables
+member_month_table
+```
+
+###### Casual Table
+```{r Popular Months for Casual Riders}
+# Casual Table
+casual_month_table <- popular_months_casual %>%
+  knitr::kable(
+    col.names = c("User Type", "Month", "Total Rides"),
+    caption = "Popular Months for Casual Riders",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style User Type column
+  column_spec(2, width = "20em") %>% # Adjust column width for Month
+  column_spec(3, color = "black", background = "lightgray") # Style Total Rides column
+casual_month_table
+```
+
+###### Bar Graph
+```{r Bar Graph of Rides by Month}
+# Interactive Plot
+plot_ly(popular_months, x = ~month, y = ~TotalRides, color = ~member_casual, type = 'bar') %>%
+  layout(title = "Rides by Month and User Type",
+         xaxis = list(title = "Month"),
+         yaxis = list(title = "Number of Rides"))
+```
+
+
+#### Popular Start Station of the Month
+<p>From Februrary to November, *Streeter Dr & Grand Ave station* Is where majority of casual riders start their journey. In January, *University Ave & 57th St* station is the start station for majority of casual riders. Finally, in the month of December, *DuSable Lake Shore Dr & Monroe St* is the station where most casual riders start their journey.</P>
+<p>For Member riders, *Kingsbury St & Kinzie St* is the start station with most riders in January, March, July, August, September, October, November and December.*University Ave & 57th St* leads the number of start stations in the months February and April. Finally *Wilton Ave & Belmont Ave* has the most start journeys in May and June.</p>
+
+##### {.tabset}
+
+###### Member Table
+```{r Popular Start Station}
+# Step 1: Count rows with missing or blank start_station_name
+missing_stations <- monthly_data[is.na(start_station_name) | start_station_name == "", .N]
+
+# Step 2: Filter out rows with missing or blank start_station_name
+monthly_data <- monthly_data[!(is.na(start_station_name) | start_station_name == "")]
+
+# Step 3: Count rides by start station, month, and user type
+popular_start_stations <- monthly_data[, .N, by = .(start_station_name, month, member_casual)]
+setnames(popular_start_stations, "N", "TotalRides") # Rename column for clarity
+popular_start_stations <- popular_start_stations[order(-TotalRides)] # Order by Total Rides descending
+
+# Step 4: Filter top start stations for each month and user type
+top_start_stations <- popular_start_stations[, .SD[which.max(TotalRides)], by = .(month, member_casual)]
+
+# Step 5: Adjust text placement for visibility in visualizations
+top_start_stations[, text_position := ifelse(TotalRides < 50, "inside", "outside")]
+
+# Remove the `text_position` column from the data
+top_start_stations2 <- top_start_stations[, .(start_station_name, month, member_casual, TotalRides)]
+
+# Separate tables for each user type
+top_start_stations_member <- top_start_stations2[member_casual == "member"][order(-TotalRides)]
+top_start_stations_casual <- top_start_stations2[member_casual == "casual"][order(-TotalRides)]
+
+# Member Table
+member_table <- top_start_stations_member %>%
+  knitr::kable(
+    col.names = c("Start Station", "Month", "User Type", "Total Rides"),
+    caption = "Top Start Stations for Members",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "steelblue") %>% # Style Start Station column
+  column_spec(3, width = "10em") %>% # Adjust User Type column width
+  column_spec(4, color = "black", background = "lightgray") # Style Total Rides column
+# Print tables
+member_table
+```
+
+###### Casual Table
+```{r}
+# Casual Table
+casual_table <- top_start_stations_casual %>%
+  knitr::kable(
+    col.names = c("Start Station", "Month", "User Type", "Total Rides"),
+    caption = "Top Start Stations for Casual Riders",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style Start Station column
+  column_spec(3, width = "10em") %>% # Adjust User Type column width
+  column_spec(4, color = "black", background = "lightgray") # Style Total Rides column
+casual_table
+```
+
+###### Bar Graph
+```{r}
+# Interactive Plot with Station Name Annotations
+plot_ly(top_start_stations, 
+        x = ~month, 
+        y = ~TotalRides, 
+        color = ~member_casual, 
+        type = 'bar', 
+        text = ~paste("Station: ", start_station_name), 
+        textposition = ~text_position, 
+        hoverinfo = "text+y") %>%
+  layout(title = "Top Start Stations by Month and User Type",
+         xaxis = list(title = "Month", categoryorder = "array", categoryarray = month.name),
+         yaxis = list(title = "Number of Rides"),
+         barmode = "group",
+         showlegend = TRUE)
+```
+
+
+#### Popular End Station of the Month
+<p>*Streeter Dr & Grand Ave *station was the end destination with the most casual riders in the whole of 2024.</p>
+<p>Member riders in the months of January, March, June, July, August, September, October, November and December end most of their rides at *Kingsbury St & Kinzie St*. During February and April, *University Ave & 57th St* is the end station with majority of riders. Finally, *Wilton Ave & Belmont Ave* is the end destination with majority of member riders in May.</p>
+
+##### {.tabset}
+
+###### Member Table
+```{r Popular End Station}
+# Count rows with missing or blank end_station_name
+missing_stations <- monthly_data[is.na(end_station_name) | end_station_name == "", .N]
+
+# Filter out rows with missing or blank end_station_name
+monthly_data <- monthly_data[!(is.na(end_station_name) | end_station_name == "")]
+
+# Count rides by end station, month, and user type
+popular_end_stations <- monthly_data[, .N, by = .(end_station_name, month, member_casual)]
+setnames(popular_end_stations, "N", "TotalRides") # Rename column for clarity
+popular_end_stations <- popular_end_stations[order(-TotalRides)] # Order by Total Rides descending
+
+# Filter top end stations for each month and user type
+top_end_stations <- popular_end_stations[, .SD[which.max(TotalRides)], by = .(month, member_casual)]
+
+# Adjust text placement to ensure visibility
+top_end_stations[, text_position := ifelse(TotalRides < 50, "inside", "outside")]
+
+# Remove the `text_position` column from the data
+top_end_stations2 <- top_end_stations[, .(end_station_name, month, member_casual, TotalRides)]
+
+# Separate tables for each user type
+top_end_stations_member <- top_end_stations2[member_casual == "member"][order(-TotalRides)]
+top_end_stations_casual <- top_end_stations2[member_casual == "casual"][order(-TotalRides)]
+
+# Member Table
+member_end_station_table <- top_end_stations_member %>%
+  knitr::kable(
+    col.names = c("End Station", "Month", "User Type", "Total Rides"),
+    caption = "Top End Stations for Members",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "steelblue") %>% # Style End Station column
+  column_spec(3, width = "10em") %>% # Adjust User Type column width
+  column_spec(4, color = "black", background = "lightgray") # Style Total Rides column
+
+# Casual Table
+casual_end_station_table <- top_end_stations_casual %>%
+  knitr::kable(
+    col.names = c("End Station", "Month", "User Type", "Total Rides"),
+    caption = "Top End Stations for Casual Riders",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style End Station column
+  column_spec(3, width = "10em") %>% # Adjust User Type column width
+  column_spec(4, color = "black", background = "lightgray") # Style Total Rides column
+
+# Print tables
+member_end_station_table
+```
+
+###### Casual Table
+```{r}
+# Casual Table
+casual_end_station_table <- top_end_stations_casual %>%
+  knitr::kable(
+    col.names = c("End Station", "Month", "User Type", "Total Rides"),
+    caption = "Top End Stations for Casual Riders",
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style End Station column
+  column_spec(3, width = "10em") %>% # Adjust User Type column width
+  column_spec(4, color = "black", background = "lightgray") # Style Total Rides column
+casual_end_station_table
+```
+
+###### Bar Graph
+```{r}
+# Interactive Plot with Station Name Annotations
+plot_ly(top_end_stations, 
+        x = ~month, 
+        y = ~TotalRides, 
+        color = ~member_casual, 
+        type = 'bar', 
+        text = ~paste("Station: ", end_station_name), 
+        textposition = ~text_position, 
+        hoverinfo = "text+y") %>%
+  layout(title = "Top End Stations by Month and User Type",
+         xaxis = list(title = "Month", categoryorder = "array", categoryarray = month.name),
+         yaxis = list(title = "Number of Rides"),
+         barmode = "group",
+         showlegend = TRUE)
+```
+
+#### Peak Hours
+<p>In the weekdays, member rides peak during morning hours (*5 am - 8 am*) and evening hours (*3 pm - 6 pm*). In the weekends, peak hours are between 9 am to 6 pm.</p>
+<p>For casual riders, peak hours in the weekdays are between *3 pm to 6 pm*. In the weekends, peak hours are between *8 am to 6 pm*.</p>
+- **Casual Riders**: Ride primarily on weekends and during leisure hours.
+- **Members**: Use bikes more consistently across the week, especially during commute hours.
+
+##### {.tabset}
+
+###### Heatmap
+```{r Peak Hours}
+# Aggregate data for peak hours and days
+heatmap_data <- monthly_data[, .(Total_Rides = .N), by = .(hour_of_day, day_of_week, member_casual)]
+heatmap_data[, day_of_week := factor(day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))]
+
+# Create heatmap for member riders
+member_heatmap <- heatmap_data[member_casual == "member"]
+member_plot <- plot_ly(
+  data = member_heatmap,
+  x = ~hour_of_day,
+  y = ~day_of_week,
+  z = ~Total_Rides,
+  type = "heatmap",
+  colorscale = list(c(0, "lightblue"), c(1, "darkblue")),
+  hoverinfo = "x+y+z",
+  showscale = TRUE
+) %>%
+  layout(
+    xaxis = list(title = "Hour of Day"),
+    yaxis = list(title = "Day of Week"),
+    colorbar = list(title = "Total Rides")
+  )
+
+# Create heatmap for casual riders
+casual_heatmap <- heatmap_data[member_casual == "casual"]
+casual_plot <- plot_ly(
+  data = casual_heatmap,
+  x = ~hour_of_day,
+  y = ~day_of_week,
+  z = ~Total_Rides,
+  type = "heatmap",
+  colorscale = list(c(0, "lightpink"), c(1, "red")),
+  hoverinfo = "x+y+z",
+  showscale = TRUE
+) %>%
+  layout(
+    xaxis = list(title = "Hour of Day"),
+    yaxis = list(title = "Day of Week"),
+    colorbar = list(title = "Total Rides")
+  )
+
+# Combine the plots with labels
+subplot(member_plot, casual_plot, nrows = 2, shareX = TRUE, titleX = TRUE, titleY = TRUE) %>%
+  layout(
+    title = "Peak Hours by User Type",
+    annotations = list(
+      list(
+        x = 0.5,
+        y = 1,
+        text = "Member Riders",
+        showarrow = FALSE,
+        xref = "paper",
+        yref = "paper",
+        font = list(size = 14, color = "yellow")
+      ),
+      list(
+        x = 0.5,
+        y = 0.5,
+        text = "Casual Riders",
+        showarrow = FALSE,
+        xref = "paper",
+        yref = "paper",
+        font = list(size = 14, color = "red")
+      )
+    )
+  )
+```
+
+###### Bar Graph
+```{r}
+# Calculate average total rides for each hour across 12 months
+peak_hours <- monthly_data[, .(Avg_Total_Rides = mean(.N, na.rm = TRUE)), 
+                           by = .(hour_of_day, member_casual)]
+
+# Rename column for clarity
+setnames(peak_hours, "Avg_Total_Rides", "TotalRides")
+
+# Sort data by Total Rides in descending order
+peak_hours <- peak_hours[order(-TotalRides)]
+
+
+
+# Aggregate data for peak hours
+hourly_data <- monthly_data[, .N, by = .(hour_of_day, member_casual)]
+
+# Create a bar graph with plot_ly
+plot_ly(
+  data = hourly_data,
+  x = ~hour_of_day,
+  y = ~N,
+  color = ~member_casual,
+  type = "bar",
+  hoverinfo = "x+y+name",
+  barmode = "group"
+) %>%
+  layout(
+    title = "Peak Hours by User Type",
+    xaxis = list(title = "Hour of Day", tickmode = "array", tickvals = 0:23),
+    yaxis = list(title = "Number of Rides"),
+    legend = list(title = list(text = "User Type")),
+    margin = list(t = 50, b = 50, l = 50, r = 50)
+  )
+```
+
+
+#### Casual riders to watch
+<p>During the week days, there is a good number of casual riders who use bikes in the mornings (*5 am - 8 am*) and in the evenings (*3 pm - 6 pm*). This group of casual riders have *similar pattern* to member riders in terms of riding hours.  It is therefore worthwhile to have *target advert* for this group in order to convince them to join member subscription.</p>
+
+##### {.tabset}
+
+```{r Casual riders}
+# Step 1: Add filters for casual riders, 5 AM to 8 AM, Monday to Friday
+filtered_data_am <- monthly_data[
+  member_casual == "casual" &
+  hour(started_at) >= 5 & hour(started_at) < 8 & # Between 5 AM and 8 AM
+  weekdays(started_at) %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday") # Weekdays only
+]
+
+# Step 2: Add filters for casual riders, 3 PM to 6 PM, Monday to Friday
+filtered_data_pm <- monthly_data[
+  member_casual == "casual" &
+  hour(started_at) >= 15 & hour(started_at) < 18 & # Between 5 PM and 6 PM
+  weekdays(started_at) %in% c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday") # Weekdays only
+]
+casual_all <- monthly_data[
+  member_casual == "casual"
+]
+
+# Step 3: Count rides by start station for 5 AM to 8 AM
+casual_riders_start_stations_am <- filtered_data_am[, .N, by = .(start_station_name)]
+setnames(casual_riders_start_stations_am, "N", "TotalRides")
+
+# Step 4: Count rides by start station for 3 PM to 6 PM
+casual_riders_start_stations_pm <- filtered_data_pm[, .N, by = .(start_station_name)]
+setnames(casual_riders_start_stations_pm, "N", "TotalRides")
+
+# Step 5: Order by Total Rides in descending order for both time periods
+casual_riders_start_stations_am <- casual_riders_start_stations_am[order(-TotalRides)]
+casual_riders_start_stations_pm <- casual_riders_start_stations_pm[order(-TotalRides)]
+
+# Filter the top 10 rows for both time periods
+top_10_casual_riders_start_stations_am <- casual_riders_start_stations_am[1:10]
+top_10_casual_riders_start_stations_pm <- casual_riders_start_stations_pm[1:10]
+
+# Step 6: Display the tables using kableExtra
+# Table for 5 AM to 8 AM
+top_10_casual_riders_start_stations_am_table <- top_10_casual_riders_start_stations_am %>%
+  knitr::kable(
+    col.names = c("Start Station", "Total Rides"), # Table column names
+    caption = "Top 10 Start Stations for Casual Riders (5 AM to 8 AM, Mon-Fri)", # Table caption
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "red") %>% # Style Start Station column
+  column_spec(2, color = "black", background = "lightgray") # Style Total Rides column
+
+# Table for 3 PM to 6 PM
+top_10_casual_riders_start_stations_pm_table <- top_10_casual_riders_start_stations_pm %>%
+  knitr::kable(
+    col.names = c("Start Station", "Total Rides"), # Table column names
+    caption = "Top 10 Start Stations for Casual Riders (3 PM to 6 PM, Mon-Fri)", # Table caption
+    format = "html"
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed"),
+    full_width = FALSE,
+    font_size = 14
+  ) %>%
+  column_spec(1, bold = TRUE, color = "white", background = "blue") %>% # Style Start Station column
+  column_spec(2, color = "black", background = "lightgray") # Style Total Rides column
+```
+This group represent ``r ((nrow(filtered_data_am) + nrow(filtered_data_pm)) / nrow(casual_all)) * 100`%` of casual riders.
+
+###### The morning table
+`r top_10_casual_riders_start_stations_am_table`
+
+###### The evening table
+`r top_10_casual_riders_start_stations_pm_table`
+
+
+## 5. Map Popular stations (2024)
+
+### {.tabset}
+
+#### Popular Start Stations
+```{r Start Station Map}
+# Count rides by start station, month, and user type, including latitude and longitude
+popular_start_stations <- monthly_data[, .(
+  total_rides = .N,
+  start_lat = mean(start_lat, na.rm = TRUE),
+  start_lng = mean(start_lng, na.rm = TRUE)
+), by = .(start_station_name, month, member_casual)]
+
+# Filter to top stations for each month and user type
+top_stations <- popular_start_stations[, .SD[which.max(total_rides)], by = .(month, member_casual)]
+
+# Create leaflet map
+leaflet(data = top_stations) %>%
+  addTiles() %>% # Add base map tiles
+  addCircleMarkers(
+    lat = ~start_lat,
+    lng = ~start_lng,
+    radius = ~sqrt(total_rides) / 2, # Scale marker size by number of rides
+    color = ~ifelse(member_casual == "member", "blue", "red"), # Color by user type
+    group = ~member_casual, # Group for filtering
+    label = ~paste(
+      "Station Name: ", start_station_name, " ",
+      "Month: ", month, " ",
+      "Total Rides: ", total_rides
+    ), # Hover information
+    labelOptions = labelOptions(
+      style = list(
+        "font-weight" = "bold", 
+        "font-size" = "12px"
+      ),
+      textsize = "15px",
+      direction = "auto"
+    ),
+    popup = ~paste0(
+      "<b>Station Name:</b> ", start_station_name, "<br>",
+      "<b>Total Rides:</b> ", total_rides, "<br>",
+      "<b>Month:</b> ", month, "<br>",
+      "<b>User Type:</b> ", member_casual
+    ) # Clickable information
+  ) %>%
+  addLayersControl(
+    overlayGroups = c("member", "casual"), # Enable filtering by user type
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    colors = c("blue", "red"),
+    labels = c("Member Riders", "Casual Riders"),
+    title = "User Type"
+  )
+
+```
+
+#### Popular End Stations
+```{r End Station Map}
+# Count rides by end station, month, and user type, including latitude and longitude
+popular_end_stations <- monthly_data[, .(
+  total_rides = .N,
+  end_lat = mean(end_lat, na.rm = TRUE),
+  end_lng = mean(end_lng, na.rm = TRUE)
+), by = .(end_station_name, month, member_casual)]
+
+# Filter to top end stations for each month and user type
+top_end_stations <- popular_end_stations[, .SD[which.max(total_rides)], by = .(month, member_casual)]
+
+# Create leaflet map
+leaflet(data = top_end_stations) %>%
+  addTiles() %>% # Add base map tiles
+  addCircleMarkers(
+    lat = ~end_lat,
+    lng = ~end_lng,
+    radius = ~sqrt(total_rides) / 2, # Scale marker size by number of rides
+    color = ~ifelse(member_casual == "member", "blue", "red"), # Color by user type
+    group = ~member_casual, # Group for filtering
+    label = ~paste(
+      "Station Name: ", end_station_name, ",",
+      "Month: ", month, " ",
+      "Total Rides: ", total_rides
+    ), # Hover information
+    labelOptions = labelOptions(
+      style = list(
+        "font-weight" = "bold", 
+        "font-size" = "12px"
+      ),
+      textsize = "15px",
+      direction = "auto"
+    ),
+    popup = ~paste0(
+      "<b>Station Name:</b> ", end_station_name, "<br>",
+      "<b>Total Rides:</b> ", total_rides, "<br>",
+      "<b>Month:</b> ", month, "<br>",
+      "<b>User Type:</b> ", member_casual
+    ) # Clickable information
+  ) %>%
+  addLayersControl(
+    overlayGroups = c("member", "casual"), # Enable filtering by user type
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    colors = c("blue", "red"),
+    labels = c("Member Riders", "Casual Riders"),
+    title = "User Type"
+  )
+
+```
+
+
+## 6. Recommendations
+
+**Target Casual Riders with Similar Behavior to Members**
+
+I. Focus on casual riders *who commute on weekdays* during morning hours (5 AM and 8 AM) and evening hours ( 3PM -  6 PM).  
+II. Offer incentives like *discounted memberships* emphasizing commuting benefits.  
+
+**Seasonal Promotions**
+
+I. Launch campaigns *during the summer months* to convert recreational casual riders into annual members.  
+II. Highlight *membership savings* for frequent users.
+
+**Station-Based Marketing**
+
+I. Use *geotargeted advertisements* at popular casual rider stations (e.g., Streeter Dr & Grand Ave) promoting annual memberships and their benefits.
+
+
+
