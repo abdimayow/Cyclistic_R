@@ -1,54 +1,56 @@
-<div style="text-align: center;">
-  <h1>Title: Cyclistic User Behavior Analysis</h1>
-  <h2>Author: Abdirahman Abdikadir Ali</h2>
-  <h4>Date: 13-01-2025</h4>
-</div>
+---
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+::: {style="text-align: center;"}
+<h1>Title: Cyclistic User Behavior Analysis</h1>
+
+<h2>Author: Abdirahman Abdikadir Ali</h2>
+
+<h4>Date: 13-01-2025</h4>
+:::
 
 # CONTEXT OF CASE STUDY
-### This is a case study project for google data analytics professional certificate
 
-## About the company
-<p>In 2016, Cyclistic launched a successful bike-share offering. Since then, the program has grown
-to a fleet of 5,824 bicycles that are geotracked and locked into a network of 692 stations
-across Chicago. The bikes can be unlocked from one station and returned to any other station
-in the system anytime.</p>
+### This is a case study project for Google Data Analytics Professional Certificate
 
-<p>Until now, Cyclistic’s marketing strategy relied on building general awareness and appealing to
-broad consumer segments. One approach that helped make these things possible was the
-flexibility of its pricing plans: single-ride passes, full-day passes, and annual memberships.
-Customers who purchase single-ride or full-day passes are referred to as casual riders.
-Customers who purchase annual memberships are Cyclistic members.</p>
+## About the Analysis
 
-<p>Cyclistic’s finance analysts have concluded that annual members are much more profitable
-than casual riders. Although the pricing flexibility helps Cyclistic attract more customers,
-Moreno believes that maximizing the number of annual members will be key to future growth.
-Rather than creating a marketing campaign that targets all-new customers, Moreno believes
-there is a solid opportunity to convert casual riders into members. She notes that casual riders
-are already aware of the Cyclistic program and have chosen Cyclistic for their mobility needs.</p>
+<p>The analysis aims to explore how annual members and casual riders use Cyclistic bikes
+differently, leveraging historical bike trip data to identify key usage patterns. 
+By understanding these differences, the study seeks to provide actionable insights to 
+support the business task of increasing the number of annual memberships, which are more 
+profitable for Cyclistic.</p>
 
-<p>Moreno has set a clear goal: Design marketing strategies aimed at converting casual riders into
-annual members. In order to do that, however, the team needs to better understand how
-annual members and casual riders diŦer, why casual riders would buy a membership, and how
-digital media could affect their marketing tactics. Moreno and her team are interested in
-analyzing the Cyclistic historical bike trip data to identify trends.</p>
+### Key Business Objectives
 
-## Ask
-Three questions will guide the future marketing program:
-1. How do annual members and casual riders use Cyclistic bikes differently?
-2. Why would casual riders buy Cyclistic annual memberships?
-3. How can Cyclistic use digital media to influence casual riders to become members?
+1. **Understand User Behavior:** Analyze historical bike trip data to identify usage trends and behavior differences between casual riders and annual members.
+2. **Support Marketing Strategies:** Provide insights into why casual riders might transition to annual memberships and how digital media could be used to influence this transition.
+3. **Drive Growth:** Develop recommendations that focus on converting casual riders into annual members to maximize profitability and enhance the program`s long-term sustainability.
 
-## Task   
-Moreno has assigned you the first question to answer: How do annual members and casualriders use Cyclistic bikes differently?
-You will produce a report with the following deliverables:
-1. A clear statement of the business task
-2. A description of all data sources used
-3. Documentation of any cleaning or manipulation of data
-4. A summary of your analysis
-5. Supporting visualizations and key findings
-6. Your top three recommendations based on your analysis
-   
- 
-**Click this link to see the analysis report: [Case Study Report](https://fy4z9s-mayow-cabdiqadir.shinyapps.io/case_study/)**
- 
-   
+## Deliverables
+
+The analysis includes:
+
+- A clear statement of the business task.
+- A description of the data sources used.
+- Documentation of data cleaning and manipulation steps.
+- Summarized insights into user behavior differences.
+- Supporting visualizations for key findings.
+- Recommendations to guide future marketing campaigns.
+
+## About the Shiny App: Cyclistic_R
+
+The **Cyclistic_R** Shiny app is an interactive tool designed to showcase the results of this analysis. It fulfills the following objectives:
+
+1. **Visualization of Data Trends:** The app provides dynamic visualizations that highlight differences in ride duration, frequency, and station usage between casual riders and annual members.
+2. **User Behavior Insights:** Users can explore specific patterns such as peak riding times, popular stations, and trip routes, helping to uncover insights about user preferences and habits.
+3. **Data-Driven Recommendations:** The app supports decision-makers by presenting key findings in an accessible and engaging format, enabling informed marketing strategies to convert casual riders into members.
+4. **Transparency and Interactivity:** It offers a platform for stakeholders to review the data cleaning, analysis process, and the methodology used in deriving recommendations.
+
+## Links
+
+- **[Shiny App](https://fy4z9s-mayow-cabdiqadir.shinyapps.io/case_study/)**
+- **[GitHub Code Repository](https://github.com/abdimayow/Cyclistic_R)**
