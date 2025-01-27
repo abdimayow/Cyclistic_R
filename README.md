@@ -1,16 +1,10 @@
----
-editor_options: 
-  markdown: 
-    wrap: 72
----
 
-::: {style="text-align: center;"}
 <h1>Title: Cyclistic User Behavior Analysis</h1>
 
 <h2>Author: Abdirahman Abdikadir Ali</h2>
 
 <h4>Date: 13-01-2025</h4>
-:::
+
 
 # CONTEXT OF CASE STUDY
 
