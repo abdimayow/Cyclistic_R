@@ -1,0 +1,103 @@
+input[type="number"] {
+  max-width: 80%;
+}
+
+div.outer {
+  position: fixed;
+  top: 41px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.navbar {
+  background-color: #FFFFE0 !important;  /* Set the background color to white */
+  border-bottom: 1px solid #ddd;        /* Add a subtle border for distinction */
+}
+
+.navbar .navbar-nav > li > a {
+  color: #000000 !important;  /* Set the text color to black */
+}
+
+.navbar-brand {
+  color: #4682B4 !important;  /* Set the title/logo color */
+  font-size: 24px;            /* Font size for the title */
+  font-weight: bold;          /* Make the title bold */
+  display: flex;
+  align-items: center;
+}
+
+/* Styling for the logo in the navbar */
+.navbar-brand img {
+  height: 40px;               /* Adjust the height of the logo */
+  margin-right: 10px;         /* Add spacing between the logo and text */
+}
+
+
+/* Customize fonts */
+body, label, input, button, select { 
+  font-family: 'Helvetica Neue', Helvetica;
+  font-weight: 200;
+}
+h1, h2, h3, h4 { font-weight: 400; }
+
+#controls {
+  /* Appearance */
+  background-color: white;
+  padding: 0 20px 20px 20px;
+  cursor: move;
+  /* Fade out while not hovering */
+  opacity: 0.65;
+  zoom: 0.9;
+  transition: opacity 500ms 1s;
+}
+#controls:hover {
+  /* Fade in while hovering */
+  opacity: 0.95;
+  transition-delay: 0;
+}
+
+/* Position and style citation */
+#cite {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  font-size: 12px;
+}
+
+/* If not using map tiles, show a white background */
+.leaflet-container {
+  background-color: white !important;
+}
+
+/* Remove vertical scrollbars for the Report tab */
+div#report-tab {
+  position: absolute;  /* Ensure it uses the entire space of the tab */
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;  /* Full height of the container */
+  width: 100%;   /* Full width of the container */
+  overflow: hidden; /* Remove any scrollbars */
+}
+
+div#data-tab {
+   height: 100%;  /* Full height of the container */
+  width: 100%;   /* Full width of the container */
+  overflow: show; /* Remove any scrollbars */
+}
+
+div#report-tab iframe {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 100%;  /* Full height */
+  width: 100%;   /* Full width */
+  border: none;  /* Remove iframe border */
+  overflow: hidden; /* Remove any scrollbars within the iframe */
+}

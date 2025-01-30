@@ -1035,7 +1035,8 @@ plot_ly(
     xaxis = list(title = "User Type"),
     yaxis = list(title = "Percentage (%)"),
     showlegend = FALSE
-  )
+  )%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
@@ -1061,12 +1062,13 @@ avg_duration %>%
 ```
 
 ###### Bar Graph
-```{r Graph of Trip Duration}
+```{r Graph of Trip Duration, fig.width=10}
 # Interactive Plot
 plot_ly(avg_duration, x = ~member_casual, y = ~avg_duration, type = 'bar', color = ~member_casual) %>%
   layout(title = "Average Trip Duration by User Type",
          xaxis = list(title = "User Type"),
-         yaxis = list(title = "Average Duration (minutes)"))
+         yaxis = list(title = "Average Duration (minutes)"))%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
@@ -1128,12 +1130,13 @@ casual_table
 ```
 
 ###### Bar Graph
-```{r Bar Graph of Rides by Day}
+```{r Bar Graph of Rides by Day, fig.width=10}
 # Interactive Plot
 plot_ly(popular_days, x = ~day_of_week, y = ~TotalRides, color = ~member_casual, type = 'bar') %>%
   layout(title = "Rides by Day of the Week and User Type",
          xaxis = list(title = "Day of the Week"),
-         yaxis = list(title = "Number of Rides"))
+         yaxis = list(title = "Number of Rides"))%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
@@ -1197,12 +1200,13 @@ casual_month_table
 ```
 
 ###### Bar Graph
-```{r Bar Graph of Rides by Month}
+```{r Bar Graph of Rides by Month, fig.width=10}
 # Interactive Plot
 plot_ly(popular_months, x = ~month, y = ~TotalRides, color = ~member_casual, type = 'bar') %>%
   layout(title = "Rides by Month and User Type",
          xaxis = list(title = "Month"),
-         yaxis = list(title = "Number of Rides"))
+         yaxis = list(title = "Number of Rides"))%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
@@ -1278,7 +1282,7 @@ casual_table
 ```
 
 ###### Bar Graph
-```{r}
+```{r Graph of Top Start Stations by Month, fig.width=10}
 # Interactive Plot with Station Name Annotations
 plot_ly(top_start_stations, 
         x = ~month, 
@@ -1292,7 +1296,8 @@ plot_ly(top_start_stations,
          xaxis = list(title = "Month", categoryorder = "array", categoryarray = month.name),
          yaxis = list(title = "Number of Rides"),
          barmode = "group",
-         showlegend = TRUE)
+         showlegend = TRUE)%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
@@ -1385,7 +1390,7 @@ casual_end_station_table
 ```
 
 ###### Bar Graph
-```{r}
+```{r Top End Stations by Month,  fig.width=10}
 # Interactive Plot with Station Name Annotations
 plot_ly(top_end_stations, 
         x = ~month, 
@@ -1399,7 +1404,8 @@ plot_ly(top_end_stations,
          xaxis = list(title = "Month", categoryorder = "array", categoryarray = month.name),
          yaxis = list(title = "Number of Rides"),
          barmode = "group",
-         showlegend = TRUE)
+         showlegend = TRUE)%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 #### Peak Hours
@@ -1411,7 +1417,7 @@ plot_ly(top_end_stations,
 ##### {.tabset}
 
 ###### Heatmap
-```{r Peak Hours}
+```{r Peak Hours, fig.width=10}
 # Aggregate data for peak hours and days
 heatmap_data <- monthly_data[, .(Total_Rides = .N), by = .(hour_of_day, day_of_week, member_casual)]
 heatmap_data[, day_of_week := factor(day_of_week, levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))]
@@ -1432,7 +1438,8 @@ member_plot <- plot_ly(
     xaxis = list(title = "Hour of Day"),
     yaxis = list(title = "Day of Week"),
     colorbar = list(title = "Total Rides")
-  )
+  )%>%
+  config(responsive = TRUE)  # Make the plot responsive
 
 # Create heatmap for casual riders
 casual_heatmap <- heatmap_data[member_casual == "casual"]
@@ -1450,7 +1457,8 @@ casual_plot <- plot_ly(
     xaxis = list(title = "Hour of Day"),
     yaxis = list(title = "Day of Week"),
     colorbar = list(title = "Total Rides")
-  )
+  )%>%
+  config(responsive = TRUE)  # Make the plot responsive
 
 # Combine the plots with labels
 subplot(member_plot, casual_plot, nrows = 2, shareX = TRUE, titleX = TRUE, titleY = TRUE) %>%
@@ -1476,11 +1484,12 @@ subplot(member_plot, casual_plot, nrows = 2, shareX = TRUE, titleX = TRUE, title
         font = list(size = 14, color = "red")
       )
     )
-  )
+  )%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 ###### Bar Graph
-```{r}
+```{r Bar graph of peak hours, fig.width=10}
 # Calculate average total rides for each hour across 12 months
 peak_hours <- monthly_data[, .(Avg_Total_Rides = mean(.N, na.rm = TRUE)), 
                            by = .(hour_of_day, member_casual)]
@@ -1512,7 +1521,8 @@ plot_ly(
     yaxis = list(title = "Number of Rides"),
     legend = list(title = list(text = "User Type")),
     margin = list(t = 50, b = 50, l = 50, r = 50)
-  )
+  )%>%
+  config(responsive = TRUE)  # Make the plot responsive
 ```
 
 
